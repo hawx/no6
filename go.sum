@@ -1,0 +1,6 @@
+go.etcd.io/bbolt v1.3.11 h1:yGEzV1wPz2yVCLsD8ZAiGHhHVlczyC9d1rP43/VCRJ0=
+go.etcd.io/bbolt v1.3.11/go.mod h1:dksAq7YMXoljX0xu6VF5DMZGbhYYoLUalEiSySYAS4I=
+golang.org/x/sys v0.4.0 h1:Zr2JFtRQNX3BCZ8YtxRE9hNJYC8J6I1MVbMg6owUp18=
+golang.org/x/sys v0.4.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+hawx.me/code/assert v0.0.0-20200428180912-91e855e32e7d h1:Hc7XKqdBNBagOzEZSbuNnQ1+9w+44tx3r0UN93G8uPU=
+hawx.me/code/assert v0.0.0-20200428180912-91e855e32e7d/go.mod h1:T9mMMImeViZqsnBMFwbc0TbTlDb+bwAPF0PUJpjam6s=
