@@ -1,4 +1,4 @@
-package posting
+package no6
 
 import (
 	"bytes"

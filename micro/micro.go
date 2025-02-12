@@ -5,15 +5,15 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"hawx.me/code/no6/posting"
+	"hawx.me/code/no6"
 )
 
 type Store struct {
-	inner *posting.Store
+	inner *no6.Store
 }
 
 func Open(path string) (*Store, error) {
-	store, err := posting.Open(path)
+	store, err := no6.Open(path)
 
 	return &Store{inner: store}, err
 }
@@ -31,14 +31,14 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 		return "", errors.New("data must include properties")
 	}
 
-	var triples []posting.Triple
-	triples = append(triples, posting.Triple{Subject: uid, Predicate: "type", Object: typ[0]})
+	var triples []no6.Triple
+	triples = append(triples, no6.Triple{Subject: uid, Predicate: "type", Object: typ[0]})
 
 	for k, v := range props {
 		switch vv := v.(type) {
 		case []string:
 			for _, vvv := range vv {
-				triples = append(triples, posting.Triple{Subject: uid, Predicate: k, Object: vvv})
+				triples = append(triples, no6.Triple{Subject: uid, Predicate: k, Object: vvv})
 			}
 		case []map[string]any:
 			for _, vvv := range vv {
@@ -46,7 +46,7 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 				if err != nil {
 					return "", err
 				}
-				triples = append(triples, posting.Triple{Subject: uid, Predicate: k, Object: vuid})
+				triples = append(triples, no6.Triple{Subject: uid, Predicate: k, Object: vuid})
 			}
 		default:
 			return "", errors.New("invalid properties")
@@ -58,7 +58,7 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 	return uid, nil
 }
 
-func (s *Store) Find(qs ...posting.Query) (map[string]any, bool) {
+func (s *Store) Find(qs ...no6.Query) (map[string]any, bool) {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
 		return nil, false
@@ -67,7 +67,7 @@ func (s *Store) Find(qs ...posting.Query) (map[string]any, bool) {
 	return s.tryResolve(subjects[0])
 }
 
-func (s *Store) FindAll(qs ...posting.Query) []map[string]any {
+func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
 		return nil
@@ -88,7 +88,7 @@ func (s *Store) tryResolve(id string) (map[string]any, bool) {
 		return nil, false
 	}
 
-	triples := s.inner.Query(id, posting.Anything, posting.Eq, posting.Anything)
+	triples := s.inner.Query(id, no6.Anything, no6.Eq, no6.Anything)
 
 	var (
 		typ   []string

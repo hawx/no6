@@ -1,7 +1,7 @@
 // The idea here is storing things as (subject+predicate, objects) pairs instead of
 // (subject, predicate, object). Might also be able to partition those pairs by
 // predicate into buckets. We'll see.
-package posting
+package no6
 
 import (
 	"log/slog"
