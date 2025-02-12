@@ -1,0 +1,250 @@
+package posting
+
+import (
+	"bytes"
+	"slices"
+	"sort"
+
+	"go.etcd.io/bbolt"
+)
+
+type Constraint uint8
+
+const (
+	Eq Constraint = iota
+	Ne
+	Lt
+	Gt
+)
+
+type Query struct {
+	predicate  string
+	constraint Constraint
+	object     string
+}
+
+// PredicateObject returns a query for (?, predicate, object) triples.
+func PredicateObject(predicate string, constraint Constraint, object string) Query {
+	if predicate == Anything {
+		panic("predicate must be given")
+	}
+	if object == Anything {
+		panic("object must be given")
+	}
+
+	return Query{predicate: predicate, constraint: constraint, object: object}
+}
+
+// QuerySubject finds subjects that match all of the given queries. That is, it
+// finds all ? that satisfy the intersection of (?, p1, o1)...(?, pN, oN).
+func (s *Store) QuerySubject(queries ...Query) []string {
+	var val []string
+
+	s.db.View(func(tx *bbolt.Tx) error {
+		dataBucket := tx.Bucket(bucketData)
+		if dataBucket == nil {
+			return nil
+		}
+
+		var subjects []uint64
+
+		for qi, query := range queries {
+			predicateBucket := tx.Bucket([]byte("predicate-" + query.predicate))
+			if predicateBucket == nil {
+				return nil
+			}
+
+			var thisQuerySubjects []uint64
+
+			predicateBucket.ForEach(func(k, v []byte) error {
+				for i := 0; i < len(v); i += 8 {
+					obj := v[i : i+8]
+
+					switch query.constraint {
+					case Eq:
+						objectUID := dataBucket.Get([]byte(query.object))
+						if !bytes.Equal(objectUID, obj) {
+							continue
+						}
+					case Ne:
+						objectUID := dataBucket.Get([]byte(query.object))
+						if bytes.Equal(objectUID, obj) {
+							continue
+						}
+					case Lt:
+						item := dataBucket.Get(obj)
+						if string(item) >= query.object {
+							continue
+						}
+					case Gt:
+						item := dataBucket.Get(obj)
+						if string(item) <= query.object {
+							continue
+						}
+					}
+
+					thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
+				}
+
+				return nil
+			})
+
+			if qi == 0 {
+				subjects = thisQuerySubjects
+			} else {
+				subjects = intersect(subjects, thisQuerySubjects)
+			}
+		}
+
+		for _, subj := range subjects {
+			item := dataBucket.Get(toBytes(subj))
+			val = append(val, string(item))
+		}
+
+		return nil
+	})
+
+	return val
+}
+
+type namedList struct {
+	subject   string
+	predicate string
+	list      []byte
+}
+
+// Query allows simple (?/X, Y, ?/Z) queries, returning any matching triples.
+func (s *Store) Query(subject, predicate string, constraint Constraint, object string) []Triple {
+	var val []Triple
+
+	s.db.View(func(tx *bbolt.Tx) error {
+		dataBucket := tx.Bucket(bucketData)
+		if dataBucket == nil {
+			return nil
+		}
+
+		predicateBuckets := map[string]*bbolt.Bucket{}
+
+		if predicate != Anything {
+			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
+			if predicateBucket == nil {
+				return nil
+			}
+			predicateBuckets[predicate] = predicateBucket
+		} else {
+			predicatesBucket := tx.Bucket(bucketPredicates)
+			if predicatesBucket == nil {
+				return nil
+			}
+			predicatesBucket.ForEach(func(k, v []byte) error {
+				predicateBuckets[string(k)] = tx.Bucket([]byte("predicate-" + string(k)))
+				return nil
+			})
+		}
+
+		var postingLists []namedList
+
+		if subject != Anything {
+			subjectUID := dataBucket.Get([]byte(subject))
+			if subjectUID == nil {
+				return nil
+			}
+
+			for predicate, predicateBucket := range predicateBuckets {
+				key := makeKey(readUID(subjectUID), predicate)
+
+				postingList := predicateBucket.Get(key)
+				if postingList == nil {
+					continue
+				}
+
+				postingLists = append(postingLists, namedList{subject: subject, predicate: predicate, list: postingList})
+			}
+		} else {
+			for predicate, predicateBucket := range predicateBuckets {
+				predicateBucket.ForEach(func(k, v []byte) error {
+					subjectVal := dataBucket.Get([]byte(k[:8]))
+
+					postingLists = append(postingLists, namedList{subject: string(subjectVal), predicate: predicate, list: v})
+					return nil
+				})
+			}
+		}
+
+		if len(postingLists) == 0 {
+			return nil
+		}
+
+		var objectUID []byte
+		if object != Anything {
+			objectUID = dataBucket.Get([]byte(object))
+			if objectUID == nil {
+				return nil
+			}
+		}
+
+		for _, postingList := range postingLists {
+			for i := 0; i < len(postingList.list); i += 8 {
+				obj := postingList.list[i : i+8]
+
+				var item []byte
+				if objectUID != nil {
+					switch constraint {
+					case Eq:
+						if !bytes.Equal(objectUID, obj) {
+							continue
+						}
+					case Ne:
+						if bytes.Equal(objectUID, obj) {
+							continue
+						}
+					case Lt:
+						item = dataBucket.Get(obj)
+						if string(item) >= object {
+							continue
+						}
+					case Gt:
+						item = dataBucket.Get(obj)
+						if string(item) <= object {
+							continue
+						}
+					}
+				}
+
+				if item == nil {
+					item = dataBucket.Get(obj)
+				}
+
+				val = append(val, Triple{Subject: postingList.subject, Predicate: postingList.predicate, Object: string(item)})
+			}
+		}
+
+		return nil
+	})
+
+	return val
+}
+
+// TODO: make it a better implementation. If these were stored sorted it would
+// remove the slices.Sorts...
+func intersect(a, b []uint64) []uint64 {
+	if a == nil || b == nil {
+		return nil
+	}
+
+	result := []uint64{}
+
+	slices.Sort(a)
+	slices.Sort(b)
+
+	for _, v := range a {
+		idx := sort.Search(len(b), func(i int) bool {
+			return b[i] >= v
+		})
+		if idx < len(b) && b[idx] == v {
+			result = append(result, v)
+		}
+	}
+
+	return result
+}
