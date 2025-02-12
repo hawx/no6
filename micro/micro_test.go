@@ -100,9 +100,91 @@ func TestInsertFindWhenPaged(t *testing.T) {
 	store.Insert(post3)
 	store.Insert(post4)
 
-	entries := store.FindAll(
+	assert.Equal(t, []map[string]any{post3, post4}, store.FindAll(
 		posting.PredicateObject("type", posting.Eq, "h-entry"),
-		posting.PredicateObject("published", posting.Gt, "2022-03-02"))
+		posting.PredicateObject("published", posting.Gt, "2022-03-02")))
 
-	assert.Equal(t, []map[string]any{post3, post4}, entries)
+	assert.Equal(t, []map[string]any{post1, post2}, store.FindAll(
+		posting.PredicateObject("type", posting.Eq, "h-entry"),
+		posting.PredicateObject("published", posting.Lt, "2022-03-02")))
+}
+
+var benchErr error
+
+func BenchmarkStoreInsert(b *testing.B) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	post := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/finish-world"},
+			"content":   []string{"Finish world"},
+			"published": []string{"2023-01-02"},
+		},
+	}
+
+	for n := 0; n < b.N; n++ {
+		_, benchErr = store.Insert(post)
+	}
+}
+
+var benchFound []map[string]any
+
+func BenchmarkStoreFindAll(b *testing.B) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	post1 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/hello-world"},
+			"content":   []string{"Hello world"},
+			"published": []string{"2021-01-02"},
+		},
+	}
+
+	post2 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/continue-world"},
+			"content":   []string{"Continue world"},
+			"published": []string{"2022-01-02"},
+		},
+	}
+
+	post3 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/continue-again-world"},
+			"content":   []string{"Continue again world"},
+			"published": []string{"2022-06-02"},
+		},
+	}
+
+	post4 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/finish-world"},
+			"content":   []string{"Finish world"},
+			"published": []string{"2023-01-02"},
+		},
+	}
+
+	store.Insert(post1)
+	store.Insert(post2)
+	store.Insert(post3)
+	store.Insert(post4)
+
+	for n := 0; n < b.N; n++ {
+		benchFound = store.FindAll(
+			posting.PredicateObject("type", posting.Eq, "h-entry"),
+			posting.PredicateObject("published", posting.Lt, "2022-03-02"))
+	}
 }

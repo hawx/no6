@@ -7,6 +7,43 @@ import (
 	"hawx.me/code/assert"
 )
 
+func BenchmarkStoreInsert(b *testing.B) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	for n := 0; n < b.N; n++ {
+		store.Insert(Triple{"john", "firstName", "John"})
+	}
+}
+
+var benchTriples []Triple
+
+func BenchmarkStoreQuery(b *testing.B) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	store.Insert(
+		Triple{"john", "firstName", "John"},
+		Triple{"john", "lastName", "Smith"},
+		Triple{"john", "age", "20"}, // TODO: types other than string
+		Triple{"john", "knows", "dave"},
+		Triple{"john", "knows", "mike"},
+		Triple{"dave", "firstName", "Dave"},
+		Triple{"dave", "lastName", "Davidson"},
+		Triple{"dave", "age", "30"},
+	)
+
+	for n := 0; n < b.N; n++ {
+		benchTriples = store.Query(Anything, "knows", Eq, Anything)
+	}
+}
+
 func TestSimpleQuery(t *testing.T) {
 	file, _ := os.CreateTemp("", "")
 	file.Close()
