@@ -1,6 +1,6 @@
-// The idea here is storing things as (subject+predicate, objects) pairs instead of
-// (subject, predicate, object). Might also be able to partition those pairs by
-// predicate into buckets. We'll see.
+// The idea here is, to copy dgraph, storing things as (subject+predicate,
+// objects) pairs instead of (subject, predicate, object). Then predicates are
+// split into buckets. We'll see how it goes.
 package no6
 
 import (
@@ -24,6 +24,9 @@ var (
 	// (ID(X), X) pairs.
 	//
 	// TODO: is it necessary to have both, and what about collisions?
+	//
+	// TODO: would be good to have some indexers, so we can store other things. So
+	// have for indexer f, store (f(X), ID(X)) and (ID(X), X) pairs.
 	bucketData = []byte("data")
 
 	// The predicates bucket specifies all predicates (as keys), to support
