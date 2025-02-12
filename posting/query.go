@@ -113,6 +113,11 @@ type namedList struct {
 	list      []byte
 }
 
+type namedBucket struct {
+	predicate string
+	bucket    *bbolt.Bucket
+}
+
 // Query allows simple (?/X, Y, ?/Z) queries, returning any matching triples.
 func (s *Store) Query(subject, predicate string, constraint Constraint, object string) []Triple {
 	var val []Triple
@@ -123,21 +128,21 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 			return nil
 		}
 
-		predicateBuckets := map[string]*bbolt.Bucket{}
+		var predicateBuckets []namedBucket
 
 		if predicate != Anything {
 			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
 			if predicateBucket == nil {
 				return nil
 			}
-			predicateBuckets[predicate] = predicateBucket
+			predicateBuckets = append(predicateBuckets, namedBucket{predicate: predicate, bucket: predicateBucket})
 		} else {
 			predicatesBucket := tx.Bucket(bucketPredicates)
 			if predicatesBucket == nil {
 				return nil
 			}
 			predicatesBucket.ForEach(func(k, v []byte) error {
-				predicateBuckets[string(k)] = tx.Bucket([]byte("predicate-" + string(k)))
+				predicateBuckets = append(predicateBuckets, namedBucket{predicate: string(k), bucket: tx.Bucket([]byte("predicate-" + string(k)))})
 				return nil
 			})
 		}
@@ -150,22 +155,22 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 				return nil
 			}
 
-			for predicate, predicateBucket := range predicateBuckets {
-				key := makeKey(readUID(subjectUID), predicate)
+			for _, nb := range predicateBuckets {
+				key := makeKey(readUID(subjectUID), nb.predicate)
 
-				postingList := predicateBucket.Get(key)
+				postingList := nb.bucket.Get(key)
 				if postingList == nil {
 					continue
 				}
 
-				postingLists = append(postingLists, namedList{subject: subject, predicate: predicate, list: postingList})
+				postingLists = append(postingLists, namedList{subject: subject, predicate: nb.predicate, list: postingList})
 			}
 		} else {
-			for predicate, predicateBucket := range predicateBuckets {
-				predicateBucket.ForEach(func(k, v []byte) error {
+			for _, nb := range predicateBuckets {
+				nb.bucket.ForEach(func(k, v []byte) error {
 					subjectVal := dataBucket.Get([]byte(k[:8]))
 
-					postingLists = append(postingLists, namedList{subject: string(subjectVal), predicate: predicate, list: v})
+					postingLists = append(postingLists, namedList{subject: string(subjectVal), predicate: nb.predicate, list: v})
 					return nil
 				})
 			}
