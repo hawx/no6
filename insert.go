@@ -7,6 +7,7 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+// TODO: this is more of a Put?
 func (s *Store) Insert(triples ...Triple) {
 	for _, triple := range triples {
 		s.insertTriple(triple.Subject, triple.Predicate, triple.Object)
@@ -47,7 +48,17 @@ func (s *Store) insertTriple(subject, predicate, object string) {
 		if objectUID == nil {
 			objectUID, lastID = incKey(lastID)
 			dataBucket.Put(objectUID, []byte(object))
-			dataBucket.Put([]byte(object), objectUID)
+
+			indexer, ok := s.indexes[predicate]
+			if !ok {
+				// TODO: use a shared thing for this, or just inline?
+				indexer = FullTextIndexer{}
+			}
+
+			indexed := indexer.Index([]byte(object))
+			if len(indexed) > 0 {
+				dataBucket.Put(indexed, objectUID)
+			}
 
 			s.logger.Debug("PUT",
 				slog.String("bucket", string(bucketData)),

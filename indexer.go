@@ -6,12 +6,24 @@ package no6
 // "description" then it can be stored more efficiently by not making it
 // searchable.
 
+type Indexer interface {
+	Index([]byte) []byte
+}
+
 // A NilIndexer will not store objects in a way that can be queried or sorted.
 type NilIndexer struct{}
+
+func (i NilIndexer) Index(data []byte) []byte {
+	return []byte{}
+}
 
 // A FullTextIndexer will store objects such that they can be queried and
 // sorted.
 type FullTextIndexer struct{}
+
+func (i FullTextIndexer) Index(data []byte) []byte {
+	return data
+}
 
 // An IntIndexer will store objects as ints, such that they can be queried and
 // sorted.

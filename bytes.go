@@ -3,9 +3,11 @@ package no6
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
+	"sort"
 )
 
-func toBytes(subject uint64) []byte {
+func writeUID(subject uint64) []byte {
 	data := make([]byte, 8)
 	binary.LittleEndian.PutUint64(data, subject)
 	return data
@@ -27,6 +29,8 @@ func keySubject(key []byte) uint64 {
 }
 
 func makeValue(objects []uint64) []byte {
+	slices.Sort(objects)
+
 	data := make([]byte, len(objects)*8)
 	for i, object := range objects {
 		binary.LittleEndian.PutUint64(data[i*8:(i+1)*8], object)
@@ -35,11 +39,26 @@ func makeValue(objects []uint64) []byte {
 }
 
 func appendValue(list []byte, value uint64) []byte {
-	data := make([]byte, 8)
-	binary.LittleEndian.PutUint64(data, value)
+	data := writeUID(value)
 
-	// should be sorted though
-	return append(list, data...)
+	idx := sort.Search(len(list)/8, func(i int) bool {
+		return compareBytes(list[i*8:i*8+8], data) > 0
+	})
+
+	return slices.Insert(list, idx*8, data...)
+}
+
+func compareBytes(a, b []byte) int {
+	for i := 7; i >= 0; i-- {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+
+	return 0
 }
 
 func incKey(last []byte) ([]byte, []byte) {

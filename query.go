@@ -2,7 +2,6 @@ package no6
 
 import (
 	"bytes"
-	"slices"
 	"sort"
 
 	"go.etcd.io/bbolt"
@@ -97,7 +96,7 @@ func (s *Store) QuerySubject(queries ...Query) []string {
 		}
 
 		for _, subj := range subjects {
-			item := dataBucket.Get(toBytes(subj))
+			item := dataBucket.Get(writeUID(subj))
 			val = append(val, string(item))
 		}
 
@@ -230,17 +229,12 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 	return val
 }
 
-// TODO: make it a better implementation. If these were stored sorted it would
-// remove the slices.Sorts...
 func intersect(a, b []uint64) []uint64 {
 	if a == nil || b == nil {
 		return nil
 	}
 
 	result := []uint64{}
-
-	slices.Sort(a)
-	slices.Sort(b)
 
 	for _, v := range a {
 		idx := sort.Search(len(b), func(i int) bool {

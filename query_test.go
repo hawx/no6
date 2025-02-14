@@ -21,11 +21,6 @@ func TestIntersect(t *testing.T) {
 			b: []uint64{2, 3, 4},
 			r: []uint64{2, 3},
 		},
-		"unsorted": {
-			a: []uint64{4, 8, 1, 2, 9, 6},
-			b: []uint64{3, 5, 1, 9, 7, 2},
-			r: []uint64{1, 2, 9},
-		},
 	}
 
 	for scenario, tc := range testcases {
