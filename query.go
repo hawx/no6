@@ -119,8 +119,8 @@ type namedBucket struct {
 }
 
 // Query allows simple (?/X, Y, ?/Z) queries, returning any matching triples.
-func (s *Store) Query(subject, predicate string, constraint Constraint, object string) []Triple {
-	s.logger.Debug("QUERY", slog.String("subject", subject), slog.String("predicate", predicate), slog.Any("constraint", constraint), slog.String("object", object))
+func (s *Store) Query(subject, predicate string, constraint Constraint, object any) []Triple {
+	s.logger.Debug("QUERY", slog.String("subject", subject), slog.String("predicate", predicate), slog.Any("constraint", constraint), slog.Any("object", object))
 	var val []Triple
 
 	s.db.View(func(tx *bbolt.Tx) error {

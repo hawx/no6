@@ -71,12 +71,12 @@ func TestSimpleQuery(t *testing.T) {
 	store.Insert(
 		Triple{"john", "firstName", "John"},
 		Triple{"john", "lastName", "Smith"},
-		Triple{"john", "age", "20"}, // TODO: types other than string
+		Triple{"john", "age", 20},
 		Triple{"john", "knows", "dave"},
 		Triple{"john", "knows", "mike"},
 		Triple{"dave", "firstName", "Dave"},
 		Triple{"dave", "lastName", "Davidson"},
-		Triple{"dave", "age", "30"},
+		Triple{"dave", "age", 30},
 	)
 
 	// * P *
@@ -90,7 +90,7 @@ func TestSimpleQuery(t *testing.T) {
 	// S P *
 	t.Run("subject-predicate", func(t *testing.T) {
 		assert.Equal(t,
-			[]Triple{{"john", "age", "20"}},
+			[]Triple{{"john", "age", 20}},
 			store.Query("john", "age", Eq, Anything),
 		)
 	})
@@ -98,16 +98,16 @@ func TestSimpleQuery(t *testing.T) {
 	// * P O
 	t.Run("predicate-object", func(t *testing.T) {
 		assert.Equal(t,
-			[]Triple{{"dave", "age", "30"}},
-			store.Query(Anything, "age", Eq, "30"),
+			[]Triple{{"dave", "age", 30}},
+			store.Query(Anything, "age", Eq, 30),
 		)
 	})
 
 	// S * O
 	t.Run("subject-object", func(t *testing.T) {
 		assert.Equal(t,
-			[]Triple{{"dave", "age", "30"}},
-			store.Query("dave", Anything, Eq, "30"),
+			[]Triple{{"dave", "age", 30}},
+			store.Query("dave", Anything, Eq, 30),
 		)
 	})
 
@@ -115,7 +115,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("subject", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{
-				{"dave", "age", "30"},
+				{"dave", "age", 30},
 				{"dave", "firstName", "Dave"},
 				{"dave", "lastName", "Davidson"},
 			},
@@ -194,6 +194,54 @@ func TestQuerySorting(t *testing.T) {
 			{"y", "count", "4"},
 			{"y", "count", "6"},
 		}, store.Query(Anything, "count", Gt, "3"))
+	})
+}
+
+func TestQueryIntSorting(t *testing.T) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	store.Insert(
+		Triple{"x", "count", 1},
+		Triple{"x", "count", 3},
+		Triple{"x", "count", 5},
+		Triple{"y", "count", 2},
+		Triple{"y", "count", 4},
+		Triple{"y", "count", 6},
+	)
+
+	t.Run("Eq", func(t *testing.T) {
+		assert.Equal(t, []Triple{
+			{"x", "count", 3},
+		}, store.Query(Anything, "count", Eq, 3))
+	})
+
+	t.Run("Ne", func(t *testing.T) {
+		assert.Equal(t, []Triple{
+			{"x", "count", 1},
+			{"x", "count", 5},
+			{"y", "count", 2},
+			{"y", "count", 4},
+			{"y", "count", 6},
+		}, store.Query(Anything, "count", Ne, 3))
+	})
+
+	t.Run("Lt", func(t *testing.T) {
+		assert.Equal(t, []Triple{
+			{"x", "count", 1},
+			{"y", "count", 2},
+		}, store.Query(Anything, "count", Lt, 3))
+	})
+
+	t.Run("Gt", func(t *testing.T) {
+		assert.Equal(t, []Triple{
+			{"x", "count", 5},
+			{"y", "count", 4},
+			{"y", "count", 6},
+		}, store.Query(Anything, "count", Gt, 3))
 	})
 }
 
