@@ -180,27 +180,6 @@ func TestQuerySorting(t *testing.T) {
 	})
 }
 
-func TestIndexing(t *testing.T) {
-	file, _ := os.CreateTemp("", "")
-	file.Close()
-	defer os.Remove(file.Name())
-
-	store, _ := Open(file.Name())
-	store.SetIndexer("bio", FullTextIndexer{}) // default anyway
-	store.SetIndexer("bio", NilIndexer{})
-	//store.SetIndexer("age", IntIndexer{})
-
-	store.Insert(
-		Triple{"john", "name", "John"},
-		Triple{"john", "bio", "Some words about me..."},
-		Triple{"john", "age", "19"},
-	)
-
-	assert.Equal(t, []Triple{{"john", "name", "John"}}, store.Query(Anything, "name", Eq, "John"))
-	assert.Equal(t, []Triple(nil), store.Query(Anything, "bio", Eq, "Some words about me..."))
-	// assert.Equal(t, []Triple{{"john", "age", "19"}}, store.Query(Anything, "age", Gt, "18"))
-}
-
 func TestUseCaseMicropub(t *testing.T) {
 	file, _ := os.CreateTemp("", "")
 	file.Close()

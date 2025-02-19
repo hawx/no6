@@ -2,6 +2,7 @@ package no6
 
 import (
 	"bytes"
+	"log/slog"
 	"sort"
 
 	"go.etcd.io/bbolt"
@@ -119,6 +120,7 @@ type namedBucket struct {
 
 // Query allows simple (?/X, Y, ?/Z) queries, returning any matching triples.
 func (s *Store) Query(subject, predicate string, constraint Constraint, object string) []Triple {
+	s.logger.Debug("QUERY", slog.String("subject", subject), slog.String("predicate", predicate), slog.Any("constraint", constraint), slog.String("object", object))
 	var val []Triple
 
 	s.db.View(func(tx *bbolt.Tx) error {
@@ -175,6 +177,7 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 			}
 		}
 
+		s.logger.Debug("checking posting lists", slog.Int("count", len(postingLists)))
 		if len(postingLists) == 0 {
 			return nil
 		}
@@ -182,7 +185,7 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 		var objectUID []byte
 		if object != Anything {
 			objectUID = dataBucket.Get([]byte(object))
-			if objectUID == nil {
+			if objectUID == nil && (constraint == Eq || constraint == Ne) {
 				return nil
 			}
 		}
@@ -192,7 +195,7 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 				obj := postingList.list[i : i+8]
 
 				var item []byte
-				if objectUID != nil {
+				if object != Anything {
 					switch constraint {
 					case Eq:
 						if !bytes.Equal(objectUID, obj) {

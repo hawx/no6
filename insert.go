@@ -48,17 +48,7 @@ func (s *Store) insertTriple(subject, predicate, object string) {
 		if objectUID == nil {
 			objectUID, lastID = incKey(lastID)
 			dataBucket.Put(objectUID, []byte(object))
-
-			indexer, ok := s.indexes[predicate]
-			if !ok {
-				// TODO: use a shared thing for this, or just inline?
-				indexer = FullTextIndexer{}
-			}
-
-			indexed := indexer.Index([]byte(object))
-			if len(indexed) > 0 {
-				dataBucket.Put(indexed, objectUID)
-			}
+			dataBucket.Put([]byte(object), objectUID)
 
 			s.logger.Debug("PUT",
 				slog.String("bucket", string(bucketData)),

@@ -40,9 +40,8 @@ var (
 type Triple struct{ Subject, Predicate, Object string }
 
 type Store struct {
-	db      *bbolt.DB
-	indexes map[string]Indexer
-	logger  *slog.Logger
+	db     *bbolt.DB
+	logger *slog.Logger
 }
 
 func Open(path string) (*Store, error) {
@@ -56,9 +55,5 @@ func Open(path string) (*Store, error) {
 	})
 	logger := slog.New(handler)
 
-	return &Store{db: db, logger: logger, indexes: map[string]Indexer{}}, nil
-}
-
-func (s *Store) SetIndexer(predicate string, indexer Indexer) {
-	s.indexes[predicate] = indexer
+	return &Store{db: db, logger: logger}, nil
 }
