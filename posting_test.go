@@ -4,8 +4,25 @@ import (
 	"os"
 	"testing"
 
+	"go.etcd.io/bbolt"
 	"hawx.me/code/assert"
 )
+
+func BenchmarkBoltPut(b *testing.B) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	db, _ := bbolt.Open(file.Name(), 0600, nil)
+
+	for n := 0; n < b.N; n++ {
+		db.Update(func(tx *bbolt.Tx) error {
+			bucket, _ := tx.CreateBucketIfNotExists([]byte("a"))
+			bucket.Put([]byte("b"), []byte("c"))
+			return nil
+		})
+	}
+}
 
 func BenchmarkStoreInsert(b *testing.B) {
 	file, _ := os.CreateTemp("", "")
