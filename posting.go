@@ -37,11 +37,16 @@ var (
 	// postinglists for that predicate.
 )
 
-type Triple struct{ Subject, Predicate, Object string }
+type Triple struct {
+	Subject   string
+	Predicate string
+	Object    any
+}
 
 type Store struct {
 	db     *bbolt.DB
 	logger *slog.Logger
+	typer  *Typer
 }
 
 func Open(path string) (*Store, error) {
@@ -55,5 +60,9 @@ func Open(path string) (*Store, error) {
 	})
 	logger := slog.New(handler)
 
-	return &Store{db: db, logger: logger}, nil
+	return &Store{
+		db:     db,
+		logger: logger,
+		typer:  &Typer{},
+	}, nil
 }

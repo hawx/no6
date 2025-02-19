@@ -97,22 +97,22 @@ func (s *Store) tryResolve(id string) (map[string]any, bool) {
 
 	for _, triple := range triples {
 		if triple.Predicate == "type" {
-			typ = append(typ, triple.Object)
+			typ = append(typ, triple.Object.(string))
 		} else {
 			if found, ok := props[triple.Predicate]; ok {
 				switch v := found.(type) {
 				case []string:
-					props[triple.Predicate] = append(v, triple.Object)
+					props[triple.Predicate] = append(v, triple.Object.(string))
 				case []map[string]any:
-					if resolved, ok := s.tryResolve(triple.Object); ok {
+					if resolved, ok := s.tryResolve(triple.Object.(string)); ok {
 						props[triple.Predicate] = append(v, resolved)
 					}
 				}
 			} else {
-				if resolved, ok := s.tryResolve(triple.Object); ok {
+				if resolved, ok := s.tryResolve(triple.Object.(string)); ok {
 					props[triple.Predicate] = []map[string]any{resolved}
 				} else {
-					props[triple.Predicate] = []string{triple.Object}
+					props[triple.Predicate] = []string{triple.Object.(string)}
 				}
 			}
 		}

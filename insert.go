@@ -14,7 +14,7 @@ func (s *Store) Insert(triples ...Triple) {
 	}
 }
 
-func (s *Store) insertTriple(subject, predicate, object string) {
+func (s *Store) insertTriple(subject, predicate string, object any) {
 	s.db.Update(func(tx *bbolt.Tx) error {
 		idBucket, _ := tx.CreateBucketIfNotExists(bucketID)
 		lastID := idBucket.Get(keyLast)
@@ -44,16 +44,18 @@ func (s *Store) insertTriple(subject, predicate, object string) {
 				slog.String("subject", subject))
 		}
 
-		objectUID := dataBucket.Get([]byte(object))
+		objectUID := dataBucket.Get(s.typer.Format(object))
 		if objectUID == nil {
 			objectUID, lastID = incKey(lastID)
-			dataBucket.Put(objectUID, []byte(object))
-			dataBucket.Put([]byte(object), objectUID)
+			objectData := s.typer.Format(object)
+
+			dataBucket.Put(objectUID, objectData)
+			dataBucket.Put(objectData, objectUID)
 
 			s.logger.Debug("PUT",
 				slog.String("bucket", string(bucketData)),
 				slog.Uint64("uid", readUID(objectUID)),
-				slog.String("object", object))
+				slog.Any("object", object))
 		}
 
 		key := makeKey(readUID(subjectUID), predicate)

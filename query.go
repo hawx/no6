@@ -62,23 +62,23 @@ func (s *Store) QuerySubject(queries ...Query) []string {
 
 					switch query.constraint {
 					case Eq:
-						objectUID := dataBucket.Get([]byte(query.object))
+						objectUID := dataBucket.Get(s.typer.Format(query.object))
 						if !bytes.Equal(objectUID, obj) {
 							continue
 						}
 					case Ne:
-						objectUID := dataBucket.Get([]byte(query.object))
+						objectUID := dataBucket.Get(s.typer.Format(query.object))
 						if bytes.Equal(objectUID, obj) {
 							continue
 						}
 					case Lt:
 						item := dataBucket.Get(obj)
-						if string(item) >= query.object {
+						if s.typer.Compare(item, s.typer.Format(query.object)) > -1 {
 							continue
 						}
 					case Gt:
 						item := dataBucket.Get(obj)
-						if string(item) <= query.object {
+						if s.typer.Compare(item, s.typer.Format(query.object)) < 1 {
 							continue
 						}
 					}
@@ -184,7 +184,7 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 
 		var objectUID []byte
 		if object != Anything {
-			objectUID = dataBucket.Get([]byte(object))
+			objectUID = dataBucket.Get(s.typer.Format(object))
 			if objectUID == nil && (constraint == Eq || constraint == Ne) {
 				return nil
 			}
@@ -194,7 +194,7 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 			for i := 0; i < len(postingList.list); i += 8 {
 				obj := postingList.list[i : i+8]
 
-				var item []byte
+				var data []byte
 				if object != Anything {
 					switch constraint {
 					case Eq:
@@ -206,23 +206,24 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object s
 							continue
 						}
 					case Lt:
-						item = dataBucket.Get(obj)
-						if string(item) >= object {
+						data = dataBucket.Get(obj)
+						if s.typer.Compare(data, s.typer.Format(object)) > -1 {
 							continue
 						}
 					case Gt:
-						item = dataBucket.Get(obj)
-						if string(item) <= object {
+						data = dataBucket.Get(obj)
+						if s.typer.Compare(data, s.typer.Format(object)) < 1 {
 							continue
 						}
 					}
 				}
 
-				if item == nil {
-					item = dataBucket.Get(obj)
+				if data == nil {
+					data = dataBucket.Get(obj)
 				}
+				_, item := s.typer.Read(data)
 
-				val = append(val, Triple{Subject: postingList.subject, Predicate: postingList.predicate, Object: string(item)})
+				val = append(val, Triple{Subject: postingList.subject, Predicate: postingList.predicate, Object: item})
 			}
 		}
 
