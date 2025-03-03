@@ -1,30 +1,43 @@
-// Package micro provides a micropub-style interface to no6 databases.
+// Package micro provides a microformat-style interface to no6 databases.
 package micro
 
 import (
 	"errors"
+	"log"
 
-	"github.com/google/uuid"
 	"hawx.me/code/no6"
 )
 
 type Store struct {
-	inner *no6.Store
+	inner      *no6.Store
+	newSubject func(string) string
 }
 
-func Open(path string) (*Store, error) {
+// Open returns a new store using the path given. Insert uses newSubject to
+// determine the naming for new triples, which is given the type of the
+// microformat object.
+func Open(path string, newSubject func(string) string) (*Store, error) {
 	store, err := no6.Open(path)
 
-	return &Store{inner: store}, err
+	return &Store{inner: store, newSubject: newSubject}, err
 }
 
+// Insert adds triples for each item in a typical microformat object, e.g.
+//
+//	{
+//		"type": ["h-..."],
+//		"properties": { ... }
+//	}
+//
+// The subject  is returned, or an error if there was a problem.
 func (s *Store) Insert(data map[string]any) (string, error) {
-	uid := uuid.NewString()
-
 	typ, ok := data["type"].([]string)
 	if !ok || len(typ) != 1 {
 		return "", errors.New("data must include a single string 'type' (I think)")
 	}
+
+	uid := s.newSubject(typ[0])
+	log.Println(uid)
 
 	props, ok := data["properties"].(map[string]any)
 	if !ok {
@@ -58,6 +71,8 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 	return uid, nil
 }
 
+// Find retrieves a single microformat object using the query. It will resolve any
+// nested objects also in the database, but not any remote references.
 func (s *Store) Find(qs ...no6.Query) (map[string]any, bool) {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
@@ -67,6 +82,8 @@ func (s *Store) Find(qs ...no6.Query) (map[string]any, bool) {
 	return s.tryResolve(subjects[0])
 }
 
+// FindAll retrieves all matching microformat objects. It resolves any nested
+// objects also in the database, but not any remote references.
 func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
@@ -84,11 +101,10 @@ func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
 }
 
 func (s *Store) tryResolve(id string) (map[string]any, bool) {
-	if _, err := uuid.Parse(id); err != nil {
+	triples := s.inner.Query(id, no6.Anything, no6.Eq, no6.Anything)
+	if len(triples) == 0 {
 		return nil, false
 	}
-
-	triples := s.inner.Query(id, no6.Anything, no6.Eq, no6.Anything)
 
 	var (
 		typ   []string
