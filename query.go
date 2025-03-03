@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"sort"
+	"strings"
 
 	"go.etcd.io/bbolt"
 )
@@ -118,9 +119,9 @@ type namedBucket struct {
 	bucket    *bbolt.Bucket
 }
 
-// Query allows simple (?/X, Y, ?/Z) queries, returning any matching triples.
-func (s *Store) Query(subject, predicate string, constraint Constraint, object any) []Triple {
-	s.logger.Debug("QUERY", slog.String("subject", subject), slog.String("predicate", predicate), slog.Any("constraint", constraint), slog.Any("object", object))
+// Query allows simple (?/X, []Y, ?/Z) queries, returning any matching triples.
+func (s *Store) Query(subject string, predicates []string, constraint Constraint, object any) []Triple {
+	s.logger.Debug("QUERY", slog.String("subject", subject), slog.String("predicates", strings.Join(predicates, "|")), slog.Any("constraint", constraint), slog.Any("object", object))
 	var val []Triple
 
 	s.db.View(func(tx *bbolt.Tx) error {
@@ -130,26 +131,15 @@ func (s *Store) Query(subject, predicate string, constraint Constraint, object a
 		}
 
 		var predicateBuckets []namedBucket
-
-		if predicate != Anything {
-			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
-			if predicateBucket == nil {
-				return nil
+		for _, p := range predicates {
+			b := tx.Bucket([]byte("predicate-" + p))
+			if b == nil {
+				continue
 			}
-			predicateBuckets = append(predicateBuckets, namedBucket{predicate: predicate, bucket: predicateBucket})
-		} else {
-			predicatesBucket := tx.Bucket(bucketPredicates)
-			if predicatesBucket == nil {
-				return nil
-			}
-			predicatesBucket.ForEach(func(k, v []byte) error {
-				predicateBuckets = append(predicateBuckets, namedBucket{predicate: string(k), bucket: tx.Bucket([]byte("predicate-" + string(k)))})
-				return nil
-			})
+			predicateBuckets = append(predicateBuckets, namedBucket{predicate: p, bucket: b})
 		}
 
 		var postingLists []namedList
-
 		if subject != Anything {
 			subjectUID := dataBucket.Get([]byte(subject))
 			if subjectUID == nil {

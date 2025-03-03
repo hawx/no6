@@ -57,7 +57,7 @@ func BenchmarkStoreQuery(b *testing.B) {
 	)
 
 	for n := 0; n < b.N; n++ {
-		benchTriples = store.Query(Anything, "knows", Eq, Anything)
+		benchTriples = store.Query(Anything, []string{"knows"}, Eq, Anything)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("predicate", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"john", "knows", "dave"}, {"john", "knows", "mike"}},
-			store.Query(Anything, "knows", Eq, Anything),
+			store.Query(Anything, []string{"knows"}, Eq, Anything),
 		)
 	})
 
@@ -91,7 +91,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("subject-predicate", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"john", "age", 20}},
-			store.Query("john", "age", Eq, Anything),
+			store.Query("john", []string{"age"}, Eq, Anything),
 		)
 	})
 
@@ -99,7 +99,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("predicate-object", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"dave", "age", 30}},
-			store.Query(Anything, "age", Eq, 30),
+			store.Query(Anything, []string{"age"}, Eq, 30),
 		)
 	})
 
@@ -107,7 +107,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("subject-object", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"dave", "age", 30}},
-			store.Query("dave", Anything, Eq, 30),
+			store.Query("dave", []string{"age", "knows", "firstName", "lastName"}, Eq, 30),
 		)
 	})
 
@@ -119,7 +119,7 @@ func TestSimpleQuery(t *testing.T) {
 				{"dave", "firstName", "Dave"},
 				{"dave", "lastName", "Davidson"},
 			},
-			store.Query("dave", Anything, Eq, Anything),
+			store.Query("dave", []string{"age", "knows", "firstName", "lastName"}, Eq, Anything),
 		)
 	})
 }
@@ -168,7 +168,7 @@ func TestQuerySorting(t *testing.T) {
 	t.Run("Eq", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", "3"},
-		}, store.Query(Anything, "count", Eq, "3"))
+		}, store.Query(Anything, []string{"count"}, Eq, "3"))
 	})
 
 	t.Run("Ne", func(t *testing.T) {
@@ -178,14 +178,14 @@ func TestQuerySorting(t *testing.T) {
 			{"y", "count", "2"},
 			{"y", "count", "4"},
 			{"y", "count", "6"},
-		}, store.Query(Anything, "count", Ne, "3"))
+		}, store.Query(Anything, []string{"count"}, Ne, "3"))
 	})
 
 	t.Run("Lt", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", "1"},
 			{"y", "count", "2"},
-		}, store.Query(Anything, "count", Lt, "3"))
+		}, store.Query(Anything, []string{"count"}, Lt, "3"))
 	})
 
 	t.Run("Gt", func(t *testing.T) {
@@ -193,7 +193,7 @@ func TestQuerySorting(t *testing.T) {
 			{"x", "count", "5"},
 			{"y", "count", "4"},
 			{"y", "count", "6"},
-		}, store.Query(Anything, "count", Gt, "3"))
+		}, store.Query(Anything, []string{"count"}, Gt, "3"))
 	})
 }
 
@@ -216,7 +216,7 @@ func TestQueryIntSorting(t *testing.T) {
 	t.Run("Eq", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", 3},
-		}, store.Query(Anything, "count", Eq, 3))
+		}, store.Query(Anything, []string{"count"}, Eq, 3))
 	})
 
 	t.Run("Ne", func(t *testing.T) {
@@ -226,14 +226,14 @@ func TestQueryIntSorting(t *testing.T) {
 			{"y", "count", 2},
 			{"y", "count", 4},
 			{"y", "count", 6},
-		}, store.Query(Anything, "count", Ne, 3))
+		}, store.Query(Anything, []string{"count"}, Ne, 3))
 	})
 
 	t.Run("Lt", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", 1},
 			{"y", "count", 2},
-		}, store.Query(Anything, "count", Lt, 3))
+		}, store.Query(Anything, []string{"count"}, Lt, 3))
 	})
 
 	t.Run("Gt", func(t *testing.T) {
@@ -241,7 +241,7 @@ func TestQueryIntSorting(t *testing.T) {
 			{"x", "count", 5},
 			{"y", "count", 4},
 			{"y", "count", 6},
-		}, store.Query(Anything, "count", Gt, 3))
+		}, store.Query(Anything, []string{"count"}, Gt, 3))
 	})
 }
 

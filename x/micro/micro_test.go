@@ -50,10 +50,10 @@ func TestInsertFind(t *testing.T) {
 	_, err := store.Insert(expectedEntry)
 	assert.Nil(t, err)
 
-	bodyfat, _ := store.Find(no6.PredicateObject("num", no6.Eq, "19.83"))
+	bodyfat, _ := store.Find([]string{"type", "summary", "weight", "bodyfat", "num", "unit"}, no6.PredicateObject("num", no6.Eq, "19.83"))
 	assert.Equal(t, expectedBodyfat, bodyfat)
 
-	entry, _ := store.Find(no6.PredicateObject("summary", no6.Eq, "Weighed 70.64 kg"))
+	entry, _ := store.Find([]string{"type", "summary", "weight", "bodyfat", "num", "unit"}, no6.PredicateObject("summary", no6.Eq, "Weighed 70.64 kg"))
 	assert.Equal(t, expectedEntry, entry)
 }
 
@@ -106,10 +106,12 @@ func TestInsertFindWhenPaged(t *testing.T) {
 	store.Insert(post4)
 
 	assert.Equal(t, []map[string]any{post3, post4}, store.FindAll(
+		[]string{"type", "url", "content", "published"},
 		no6.PredicateObject("type", no6.Eq, "h-entry"),
 		no6.PredicateObject("published", no6.Gt, "2022-03-02")))
 
 	assert.Equal(t, []map[string]any{post1, post2}, store.FindAll(
+		[]string{"type", "url", "content", "published"},
 		no6.PredicateObject("type", no6.Eq, "h-entry"),
 		no6.PredicateObject("published", no6.Lt, "2022-03-02")))
 }
@@ -167,6 +169,7 @@ func TestInsertPartial(t *testing.T) {
 			},
 		},
 	}, store.FindAll(
+		[]string{"type", "location", "name", "category", "url", "street-address", "locality", "region", "postal-code", "geo", "tel"},
 		no6.PredicateObject("type", no6.Eq, "h-entry")))
 }
 
@@ -245,6 +248,7 @@ func BenchmarkStoreFindAll(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		benchFound = store.FindAll(
+			[]string{"type", "url", "content", "published"},
 			no6.PredicateObject("type", no6.Eq, "h-entry"),
 			no6.PredicateObject("published", no6.Lt, "2022-03-02"))
 	}

@@ -3,7 +3,6 @@ package micro
 
 import (
 	"errors"
-	"log"
 
 	"hawx.me/code/no6"
 )
@@ -37,7 +36,6 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 	}
 
 	uid := s.newSubject(typ[0])
-	log.Println(uid)
 
 	props, ok := data["properties"].(map[string]any)
 	if !ok {
@@ -73,18 +71,18 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 
 // Find retrieves a single microformat object using the query. It will resolve any
 // nested objects also in the database, but not any remote references.
-func (s *Store) Find(qs ...no6.Query) (map[string]any, bool) {
+func (s *Store) Find(predicates []string, qs ...no6.Query) (map[string]any, bool) {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
 		return nil, false
 	}
 
-	return s.tryResolve(subjects[0])
+	return s.tryResolve(subjects[0], predicates)
 }
 
 // FindAll retrieves all matching microformat objects. It resolves any nested
 // objects also in the database, but not any remote references.
-func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
+func (s *Store) FindAll(predicates []string, qs ...no6.Query) []map[string]any {
 	subjects := s.inner.QuerySubject(qs...)
 	if len(subjects) == 0 {
 		return nil
@@ -92,7 +90,7 @@ func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
 
 	var resolved []map[string]any
 	for _, subject := range subjects {
-		if v, ok := s.tryResolve(subject); ok {
+		if v, ok := s.tryResolve(subject, predicates); ok {
 			resolved = append(resolved, v)
 		}
 	}
@@ -100,8 +98,8 @@ func (s *Store) FindAll(qs ...no6.Query) []map[string]any {
 	return resolved
 }
 
-func (s *Store) tryResolve(id string) (map[string]any, bool) {
-	triples := s.inner.Query(id, no6.Anything, no6.Eq, no6.Anything)
+func (s *Store) tryResolve(id string, predicates []string) (map[string]any, bool) {
+	triples := s.inner.Query(id, predicates, no6.Eq, no6.Anything)
 	if len(triples) == 0 {
 		return nil, false
 	}
@@ -120,12 +118,12 @@ func (s *Store) tryResolve(id string) (map[string]any, bool) {
 				case []string:
 					props[triple.Predicate] = append(v, triple.Object.(string))
 				case []map[string]any:
-					if resolved, ok := s.tryResolve(triple.Object.(string)); ok {
+					if resolved, ok := s.tryResolve(triple.Object.(string), predicates); ok {
 						props[triple.Predicate] = append(v, resolved)
 					}
 				}
 			} else {
-				if resolved, ok := s.tryResolve(triple.Object.(string)); ok {
+				if resolved, ok := s.tryResolve(triple.Object.(string), predicates); ok {
 					props[triple.Predicate] = []map[string]any{resolved}
 				} else {
 					props[triple.Predicate] = []string{triple.Object.(string)}
