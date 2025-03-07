@@ -64,7 +64,7 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 		}
 	}
 
-	s.inner.Insert(triples...)
+	s.inner.PutTriples(triples...)
 
 	return uid, nil
 }
@@ -99,7 +99,7 @@ func (s *Store) FindAll(predicates []string, qs ...no6.Query) []map[string]any {
 }
 
 func (s *Store) tryResolve(id string, predicates []string) (map[string]any, bool) {
-	triples := s.inner.Query(id, predicates, no6.Eq, no6.Anything)
+	triples := s.inner.Query(no6.Subjects(id), no6.Predicates(predicates...))
 	if len(triples) == 0 {
 		return nil, false
 	}

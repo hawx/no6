@@ -32,7 +32,7 @@ func BenchmarkStoreInsert(b *testing.B) {
 	store, _ := Open(file.Name())
 
 	for n := 0; n < b.N; n++ {
-		store.Insert(Triple{"john", "firstName", "John"})
+		store.PutTriples(Triple{"john", "firstName", "John"})
 	}
 }
 
@@ -45,7 +45,7 @@ func BenchmarkStoreQuery(b *testing.B) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		Triple{"john", "firstName", "John"},
 		Triple{"john", "lastName", "Smith"},
 		Triple{"john", "age", "20"}, // TODO: types other than string
@@ -57,7 +57,7 @@ func BenchmarkStoreQuery(b *testing.B) {
 	)
 
 	for n := 0; n < b.N; n++ {
-		benchTriples = store.Query(Anything, []string{"knows"}, Eq, Anything)
+		benchTriples = store.Query(Predicates("knows"))
 	}
 }
 
@@ -68,7 +68,7 @@ func TestSimpleQuery(t *testing.T) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		Triple{"john", "firstName", "John"},
 		Triple{"john", "lastName", "Smith"},
 		Triple{"john", "age", 20},
@@ -83,7 +83,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("predicate", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"john", "knows", "dave"}, {"john", "knows", "mike"}},
-			store.Query(Anything, []string{"knows"}, Eq, Anything),
+			store.Query(Predicates("knows")),
 		)
 	})
 
@@ -91,7 +91,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("subject-predicate", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"john", "age", 20}},
-			store.Query("john", []string{"age"}, Eq, Anything),
+			store.Query(Subjects("john"), Predicates("age")),
 		)
 	})
 
@@ -99,7 +99,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("predicate-object", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"dave", "age", 30}},
-			store.Query(Anything, []string{"age"}, Eq, 30),
+			store.Query(Predicates("age").Eq(30)),
 		)
 	})
 
@@ -107,7 +107,7 @@ func TestSimpleQuery(t *testing.T) {
 	t.Run("subject-object", func(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"dave", "age", 30}},
-			store.Query("dave", []string{"age", "knows", "firstName", "lastName"}, Eq, 30),
+			store.Query(Predicates("age", "knows", "firstName", "lastName").Eq(30)),
 		)
 	})
 
@@ -119,7 +119,7 @@ func TestSimpleQuery(t *testing.T) {
 				{"dave", "firstName", "Dave"},
 				{"dave", "lastName", "Davidson"},
 			},
-			store.Query("dave", []string{"age", "knows", "firstName", "lastName"}, Eq, Anything),
+			store.Query(Subjects("dave"), Predicates("age", "knows", "firstName", "lastName")),
 		)
 	})
 }
@@ -131,7 +131,7 @@ func TestQuerySubject(t *testing.T) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		Triple{"john", "lives-in", "sf"},
 		Triple{"john", "eats", "sushi"},
 		Triple{"john", "eats", "indian"},
@@ -146,6 +146,7 @@ func TestQuerySubject(t *testing.T) {
 			PredicateObject("lives-in", Eq, "sf"),
 			PredicateObject("eats", Eq, "sushi"),
 		),
+		// store.QuerySubject(Predicate("lives-in").Eq("sf"), Predicate("eats").Eq("sushi"))
 	)
 }
 
@@ -156,7 +157,7 @@ func TestQuerySorting(t *testing.T) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		Triple{"x", "count", "1"},
 		Triple{"x", "count", "3"},
 		Triple{"x", "count", "5"},
@@ -168,7 +169,7 @@ func TestQuerySorting(t *testing.T) {
 	t.Run("Eq", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", "3"},
-		}, store.Query(Anything, []string{"count"}, Eq, "3"))
+		}, store.Query(Predicates("count").Eq("3")))
 	})
 
 	t.Run("Ne", func(t *testing.T) {
@@ -178,14 +179,14 @@ func TestQuerySorting(t *testing.T) {
 			{"y", "count", "2"},
 			{"y", "count", "4"},
 			{"y", "count", "6"},
-		}, store.Query(Anything, []string{"count"}, Ne, "3"))
+		}, store.Query(Predicates("count").Ne("3")))
 	})
 
 	t.Run("Lt", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", "1"},
 			{"y", "count", "2"},
-		}, store.Query(Anything, []string{"count"}, Lt, "3"))
+		}, store.Query(Predicates("count").Lt("3")))
 	})
 
 	t.Run("Gt", func(t *testing.T) {
@@ -193,7 +194,7 @@ func TestQuerySorting(t *testing.T) {
 			{"x", "count", "5"},
 			{"y", "count", "4"},
 			{"y", "count", "6"},
-		}, store.Query(Anything, []string{"count"}, Gt, "3"))
+		}, store.Query(Predicates("count").Gt("3")))
 	})
 }
 
@@ -204,7 +205,7 @@ func TestQueryIntSorting(t *testing.T) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		Triple{"x", "count", 1},
 		Triple{"x", "count", 3},
 		Triple{"x", "count", 5},
@@ -216,7 +217,7 @@ func TestQueryIntSorting(t *testing.T) {
 	t.Run("Eq", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", 3},
-		}, store.Query(Anything, []string{"count"}, Eq, 3))
+		}, store.Query(Predicates("count").Eq(3)))
 	})
 
 	t.Run("Ne", func(t *testing.T) {
@@ -226,14 +227,14 @@ func TestQueryIntSorting(t *testing.T) {
 			{"y", "count", 2},
 			{"y", "count", 4},
 			{"y", "count", 6},
-		}, store.Query(Anything, []string{"count"}, Ne, 3))
+		}, store.Query(Predicates("count").Ne(3)))
 	})
 
 	t.Run("Lt", func(t *testing.T) {
 		assert.Equal(t, []Triple{
 			{"x", "count", 1},
 			{"y", "count", 2},
-		}, store.Query(Anything, []string{"count"}, Lt, 3))
+		}, store.Query(Predicates("count").Lt(3)))
 	})
 
 	t.Run("Gt", func(t *testing.T) {
@@ -241,7 +242,7 @@ func TestQueryIntSorting(t *testing.T) {
 			{"x", "count", 5},
 			{"y", "count", 4},
 			{"y", "count", 6},
-		}, store.Query(Anything, []string{"count"}, Gt, 3))
+		}, store.Query(Predicates("count").Gt(3)))
 	})
 }
 
@@ -252,7 +253,7 @@ func TestUseCaseMicropub(t *testing.T) {
 
 	store, _ := Open(file.Name())
 
-	store.Insert(
+	store.PutTriples(
 		// https://micropub.spec.indieweb.org/ EXAMPLE 1
 		Triple{"uid1", "type", "h-entry"},
 		Triple{"uid1", "content", "hello world"},
