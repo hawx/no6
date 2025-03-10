@@ -92,6 +92,7 @@ func TestSimpleQuery(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"john", "age", 20}},
 			store.Query(Subjects("john"), Predicates("age")),
+			// store.QueryValues(Subjects("john"), Predicates("age")) => []any{20}
 		)
 	})
 
@@ -100,6 +101,7 @@ func TestSimpleQuery(t *testing.T) {
 		assert.Equal(t,
 			[]Triple{{"dave", "age", 30}},
 			store.Query(Predicates("age").Eq(30)),
+			// store.QuerySubjects(Predicates("age").Eq(30)) => []string{"save"}
 		)
 	})
 
@@ -109,6 +111,7 @@ func TestSimpleQuery(t *testing.T) {
 			[]Triple{{"dave", "age", 30}},
 			store.Query(Predicates("age", "knows", "firstName", "lastName").Eq(30)),
 		)
+		// store.QueryHas(Predicates("age", "knows", "firstName", "lastName").Eq(30)) => true
 	})
 
 	// S * *
@@ -120,8 +123,31 @@ func TestSimpleQuery(t *testing.T) {
 				{"dave", "lastName", "Davidson"},
 			},
 			store.Query(Subjects("dave"), Predicates("age", "knows", "firstName", "lastName")),
+			// store.Query(Subjects("dave"), Predicates("age", "knows", "firstName", "lastName"))
 		)
 	})
+
+	// API should be nicer:
+	//
+	// 1. A way of determining if something exists, returns true/false:
+	//
+	//   Has(Predicates("a")) => true if (?/a/?) exists
+	//   Has(Subjects("x"), Predicates("a")) => true if (x/a/?) exists
+	//   Has(Predicates("a").Eq(1)) => true if (x/a/1) exists
+	//
+	// 2. A way of getting matching subjects:
+	//
+	//   QuerySubjects(Predicates("a")) => returns all subjects where (?/a/?) exists
+	//   QuerySubjects(Subjects("x"), Predicates("a")) => returns all subjects where (?/a/?) exists
+	//   QuerySubjects(Predicates("a").Eq(1)) => returns all subjects where (?/a/1) exists
+	//
+	// 3. A way of getting matching objects:
+	//
+	//   QueryObjects(Predicates("a")) => returns all objects where (?/a/?) exists
+	//   QueryObjects(Subjects("x"), Predicates("a")) => returns all objects where (?/a/?) exists
+	//   QueryObjects(Predicates("a").Gt(1)) => returns all objects where (?/a/>1) exists
+	//
+	// 4. Existing Query which returns Triples.
 }
 
 func TestQuerySubject(t *testing.T) {
@@ -142,11 +168,10 @@ func TestQuerySubject(t *testing.T) {
 	)
 
 	assert.Equal(t, []string{"john"},
-		store.QuerySubject(
-			PredicateObject("lives-in", Eq, "sf"),
-			PredicateObject("eats", Eq, "sushi"),
+		store.QuerySubjects(
+			Predicates("lives-in").Eq("sf"),
+			Predicates("eats").Eq("sushi"),
 		),
-		// store.QuerySubject(Predicate("lives-in").Eq("sf"), Predicate("eats").Eq("sushi"))
 	)
 }
 

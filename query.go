@@ -81,9 +81,8 @@ func PredicateObject(predicate string, constraint Constraint, object string) Que
 	return Query{predicate: predicate, constraint: constraint, object: object}
 }
 
-// QuerySubject finds subjects that match all of the given queries. That is, it
-// finds all ? that satisfy the intersection of (?, p1, o1)...(?, pN, oN).
-func (s *Store) QuerySubject(queries ...Query) []string {
+// QuerySubjects finds subjects that match all of the given matchers.
+func (s *Store) QuerySubjects(matchers ...PredicatesMatcher) []string {
 	var val []string
 
 	s.db.View(func(tx *bbolt.Tx) error {
@@ -94,51 +93,55 @@ func (s *Store) QuerySubject(queries ...Query) []string {
 
 		var subjects []uint64
 
-		for qi, query := range queries {
-			predicateBucket := tx.Bucket([]byte("predicate-" + query.predicate))
-			if predicateBucket == nil {
-				return nil
-			}
-
-			var thisQuerySubjects []uint64
-
-			predicateBucket.ForEach(func(k, v []byte) error {
-				for i := 0; i < len(v); i += 8 {
-					obj := v[i : i+8]
-
-					switch query.constraint {
-					case Eq:
-						objectUID := dataBucket.Get(s.typer.Format(query.object))
-						if !bytes.Equal(objectUID, obj) {
-							continue
-						}
-					case Ne:
-						objectUID := dataBucket.Get(s.typer.Format(query.object))
-						if bytes.Equal(objectUID, obj) {
-							continue
-						}
-					case Lt:
-						item := dataBucket.Get(obj)
-						if s.typer.Compare(item, s.typer.Format(query.object)) > -1 {
-							continue
-						}
-					case Gt:
-						item := dataBucket.Get(obj)
-						if s.typer.Compare(item, s.typer.Format(query.object)) < 1 {
-							continue
-						}
-					}
-
-					thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
+		for qi, query := range matchers {
+			for _, predicate := range query.predicates {
+				predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
+				if predicateBucket == nil {
+					return nil
 				}
 
-				return nil
-			})
+				var thisQuerySubjects []uint64
 
-			if qi == 0 {
-				subjects = thisQuerySubjects
-			} else {
-				subjects = intersect(subjects, thisQuerySubjects)
+				predicateBucket.ForEach(func(k, v []byte) error {
+					for i := 0; i < len(v); i += 8 {
+						obj := v[i : i+8]
+
+						if query.object != nil {
+							switch query.constraint {
+							case Eq:
+								objectUID := dataBucket.Get(s.typer.Format(query.object))
+								if !bytes.Equal(objectUID, obj) {
+									continue
+								}
+							case Ne:
+								objectUID := dataBucket.Get(s.typer.Format(query.object))
+								if bytes.Equal(objectUID, obj) {
+									continue
+								}
+							case Lt:
+								item := dataBucket.Get(obj)
+								if s.typer.Compare(item, s.typer.Format(query.object)) > -1 {
+									continue
+								}
+							case Gt:
+								item := dataBucket.Get(obj)
+								if s.typer.Compare(item, s.typer.Format(query.object)) < 1 {
+									continue
+								}
+							}
+						}
+
+						thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
+					}
+
+					return nil
+				})
+
+				if qi == 0 {
+					subjects = thisQuerySubjects
+				} else {
+					subjects = intersect(subjects, thisQuerySubjects)
+				}
 			}
 		}
 
