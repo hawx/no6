@@ -148,6 +148,34 @@ func TestSimpleQuery(t *testing.T) {
 	//   QueryObjects(Predicates("a").Gt(1)) => returns all objects where (?/a/>1) exists
 	//
 	// 4. Existing Query which returns Triples.
+	//
+	// 5. CountSubjects and CountObjects to return counts instead of the data.
+	//
+	// 6. Need a limit and sort to allow paging.
+}
+
+func TestQuerySortLimit(t *testing.T) {
+	file, _ := os.CreateTemp("", "")
+	file.Close()
+	defer os.Remove(file.Name())
+
+	store, _ := Open(file.Name())
+
+	store.PutTriples(
+		Triple{"a", "size", 1},
+		Triple{"b", "size", 4},
+		Triple{"c", "size", 2},
+		Triple{"d", "size", 5},
+		Triple{"e", "size", 3},
+	)
+
+	assert.Equal(t, []string{"a", "c", "e", "b"},
+		store.QuerySubjects(
+			Predicates("size"),
+			Sort("size"),
+			Limit(4),
+		),
+	)
 }
 
 func TestQuerySubject(t *testing.T) {

@@ -71,7 +71,7 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 
 // Find retrieves a single microformat object using the query. It will resolve any
 // nested objects also in the database, but not any remote references.
-func (s *Store) Find(predicates []string, qs ...no6.PredicatesMatcher) (map[string]any, bool) {
+func (s *Store) Find(predicates []string, qs ...no6.SubjectMatcher) (map[string]any, bool) {
 	subjects := s.inner.QuerySubjects(qs...)
 	if len(subjects) == 0 {
 		return nil, false
@@ -82,7 +82,7 @@ func (s *Store) Find(predicates []string, qs ...no6.PredicatesMatcher) (map[stri
 
 // FindAll retrieves all matching microformat objects. It resolves any nested
 // objects also in the database, but not any remote references.
-func (s *Store) FindAll(predicates []string, qs ...no6.PredicatesMatcher) []map[string]any {
+func (s *Store) FindAll(predicates []string, qs ...no6.SubjectMatcher) []map[string]any {
 	subjects := s.inner.QuerySubjects(qs...)
 	if len(subjects) == 0 {
 		return nil

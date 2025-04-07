@@ -2,7 +2,9 @@ package no6
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 
 	"go.etcd.io/bbolt"
@@ -19,6 +21,10 @@ const (
 
 type Matcher interface {
 	isMatcher()
+}
+
+type SubjectMatcher interface {
+	isSubjectMatcher()
 }
 
 type SubjectsMatcher struct {
@@ -44,7 +50,8 @@ func Predicates(predicates ...string) PredicatesMatcher {
 	return PredicatesMatcher{predicates: predicates}
 }
 
-func (q PredicatesMatcher) isMatcher() {}
+func (q PredicatesMatcher) isMatcher()        {}
+func (q PredicatesMatcher) isSubjectMatcher() {}
 
 // Eq returns a matcher that matches triples with the predicate and equal object
 func (q PredicatesMatcher) Eq(object any) PredicatesMatcher {
@@ -63,27 +70,58 @@ func (q PredicatesMatcher) Gt(object any) PredicatesMatcher {
 	return PredicatesMatcher{predicates: q.predicates, constraint: Gt, object: object}
 }
 
-type Query struct {
-	predicate  string
-	constraint Constraint
-	object     string
+type SortMatcher struct {
+	predicate string
 }
 
-// PredicateObject returns a query for (?, predicate, object) triples.
-func PredicateObject(predicate string, constraint Constraint, object string) Query {
-	if predicate == Anything {
-		panic("predicate must be given")
-	}
-	if object == Anything {
-		panic("object must be given")
-	}
-
-	return Query{predicate: predicate, constraint: constraint, object: object}
+// Sort returns a matcher that causes results to be sorted by the predicate.
+func Sort(predicate string) SortMatcher {
+	return SortMatcher{predicate: predicate}
 }
+
+func (q SortMatcher) isMatcher()        {}
+func (q SortMatcher) isSubjectMatcher() {}
+
+type LimitMatcher struct {
+	count uint
+}
+
+// Limit returns a matcher that causes only count results to be returned.
+func Limit(count uint) LimitMatcher {
+	return LimitMatcher{count: count}
+}
+
+func (q LimitMatcher) isMatcher()        {}
+func (q LimitMatcher) isSubjectMatcher() {}
 
 // QuerySubjects finds subjects that match all of the given matchers.
-func (s *Store) QuerySubjects(matchers ...PredicatesMatcher) []string {
+func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 	var val []string
+
+	var (
+		predicates  []string
+		sortOn      string
+		limit       uint
+		constraints = map[string]constraintObject{}
+	)
+	for _, matcher := range matchers {
+		switch v := matcher.(type) {
+		case PredicatesMatcher:
+			predicates = append(predicates, v.predicates...)
+			if v.object != nil {
+				for _, predicate := range v.predicates {
+					constraints[predicate] = constraintObject{
+						constraint: v.constraint,
+						object:     v.object,
+					}
+				}
+			}
+		case SortMatcher:
+			sortOn = v.predicate
+		case LimitMatcher:
+			limit = v.count
+		}
+	}
 
 	s.db.View(func(tx *bbolt.Tx) error {
 		dataBucket := tx.Bucket(bucketData)
@@ -92,57 +130,73 @@ func (s *Store) QuerySubjects(matchers ...PredicatesMatcher) []string {
 		}
 
 		var subjects []uint64
+		var sortPredicate [][]byte
 
-		for qi, query := range matchers {
-			for _, predicate := range query.predicates {
-				predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
-				if predicateBucket == nil {
-					return nil
-				}
+		for qi, predicate := range predicates {
+			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
+			if predicateBucket == nil {
+				return nil
+			}
 
-				var thisQuerySubjects []uint64
+			var thisQuerySubjects []uint64
 
-				predicateBucket.ForEach(func(k, v []byte) error {
-					for i := 0; i < len(v); i += 8 {
-						obj := v[i : i+8]
+			predicateBucket.ForEach(func(k, v []byte) error {
+				for i := 0; i < len(v); i += 8 {
+					obj := v[i : i+8]
 
-						if query.object != nil {
-							switch query.constraint {
-							case Eq:
-								objectUID := dataBucket.Get(s.typer.Format(query.object))
-								if !bytes.Equal(objectUID, obj) {
-									continue
-								}
-							case Ne:
-								objectUID := dataBucket.Get(s.typer.Format(query.object))
-								if bytes.Equal(objectUID, obj) {
-									continue
-								}
-							case Lt:
-								item := dataBucket.Get(obj)
-								if s.typer.Compare(item, s.typer.Format(query.object)) > -1 {
-									continue
-								}
-							case Gt:
-								item := dataBucket.Get(obj)
-								if s.typer.Compare(item, s.typer.Format(query.object)) < 1 {
-									continue
-								}
+					var item []byte
+					if constraint, ok := constraints[predicate]; ok {
+						switch constraint.constraint {
+						case Eq:
+							objectUID := dataBucket.Get(s.typer.Format(constraint.object))
+							if !bytes.Equal(objectUID, obj) {
+								continue
+							}
+						case Ne:
+							objectUID := dataBucket.Get(s.typer.Format(constraint.object))
+							if bytes.Equal(objectUID, obj) {
+								continue
+							}
+						case Lt:
+							item = dataBucket.Get(obj)
+							if s.typer.Compare(item, s.typer.Format(constraint.object)) > -1 {
+								continue
+							}
+						case Gt:
+							item = dataBucket.Get(obj)
+							if s.typer.Compare(item, s.typer.Format(constraint.object)) < 1 {
+								continue
 							}
 						}
-
-						thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
 					}
 
-					return nil
-				})
+					if predicate == sortOn {
+						if item == nil {
+							sortPredicate = append(sortPredicate, dataBucket.Get(obj))
+						} else {
+							sortPredicate = append(sortPredicate, item)
+						}
+					}
 
-				if qi == 0 {
-					subjects = thisQuerySubjects
-				} else {
-					subjects = intersect(subjects, thisQuerySubjects)
+					thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
 				}
+
+				return nil
+			})
+
+			if qi == 0 {
+				subjects = thisQuerySubjects
+			} else {
+				subjects = intersect(subjects, thisQuerySubjects)
 			}
+		}
+
+		if sortOn != "" {
+			s.sortBy(subjects, sortPredicate)
+		}
+
+		if limit != 0 {
+			subjects = subjects[:limit]
 		}
 
 		for _, subj := range subjects {
@@ -176,6 +230,26 @@ type constraintObject struct {
 func (s *Store) Query(matchers ...Matcher) []Triple {
 	var val []Triple
 
+	var predicates []string
+	var subjects []string
+	constraints := map[string]constraintObject{}
+	for _, matcher := range matchers {
+		switch v := matcher.(type) {
+		case PredicatesMatcher:
+			predicates = append(predicates, v.predicates...)
+			if v.object != nil {
+				for _, predicate := range v.predicates {
+					constraints[predicate] = constraintObject{
+						constraint: v.constraint,
+						object:     v.object,
+					}
+				}
+			}
+		case SubjectsMatcher:
+			subjects = append(subjects, v.subjects...)
+		}
+	}
+
 	s.db.View(func(tx *bbolt.Tx) error {
 		dataBucket := tx.Bucket(bucketData)
 		if dataBucket == nil {
@@ -185,26 +259,6 @@ func (s *Store) Query(matchers ...Matcher) []Triple {
 		// step 1. figure out which buckets/predicates are needed.
 		// step 2. figure out which posting lists/subject-predicates are needed.
 		// step 3. figure out what objects to match each predicate to
-
-		var predicates []string
-		var subjects []string
-		constraints := map[string]constraintObject{}
-		for _, matcher := range matchers {
-			switch v := matcher.(type) {
-			case PredicatesMatcher:
-				predicates = append(predicates, v.predicates...)
-				if v.object != nil {
-					for _, predicate := range v.predicates {
-						constraints[predicate] = constraintObject{
-							constraint: v.constraint,
-							object:     v.object,
-						}
-					}
-				}
-			case SubjectsMatcher:
-				subjects = append(subjects, v.subjects...)
-			}
-		}
 
 		var predicateBuckets []namedBucket
 		for _, p := range predicates {
@@ -312,4 +366,29 @@ func intersect(a, b []uint64) []uint64 {
 	}
 
 	return result
+}
+
+// sortBy will sort as to follow the ordering of bs.
+func (s *Store) sortBy(as []uint64, bs [][]byte) {
+	type paired struct {
+		a uint64
+		b []byte
+	}
+
+	if len(as) != len(bs) {
+		panic(fmt.Sprintf("%d must equal %d", len(as), len(bs)))
+	}
+
+	pairs := make([]paired, len(as))
+	for i := range as {
+		pairs[i] = paired{a: as[i], b: bs[i]}
+	}
+
+	slices.SortFunc(pairs, func(i, j paired) int {
+		return s.typer.Compare(i.b, j.b)
+	})
+
+	for i := range as {
+		as[i] = pairs[i].a
+	}
 }
