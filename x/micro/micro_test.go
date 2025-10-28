@@ -253,3 +253,167 @@ func BenchmarkStoreFindAll(b *testing.B) {
 			no6.Predicates("published").Lt("2022-03-02"))
 	}
 }
+
+func TestUseCase(t *testing.T) {
+	newStore := func() (*Store, func() error) {
+		file, _ := os.CreateTemp("", "")
+		store, _ := Open(file.Name(), newSubject)
+
+		return store, func() error {
+			file.Close()
+			return os.Remove(file.Name())
+		}
+	}
+
+	post := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/hello-world"},
+			"content":   []string{"Hello world"},
+			"published": []string{"2021-01-02T12:00:00Z"},
+			"deleted":   []string{"true"},
+		},
+	}
+
+	post2 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/goodbye-world"},
+			"content":   []string{"Goodbye world"},
+			"published": []string{"2022-01-02T12:00:00Z"},
+		},
+	}
+
+	post3 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"url":       []string{"/hello-world-again"},
+			"content":   []string{"Hello world again"},
+			"published": []string{"2023-01-02T10:00:00Z"},
+		},
+	}
+
+	post4 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"category":  []string{"findable"},
+			"url":       []string{"/hello-world-2"},
+			"content":   []string{"Hello world 2"},
+			"published": []string{"2023-01-02T11:30:00Z"},
+		},
+	}
+
+	post5 := map[string]any{
+		"type": []string{"h-entry"},
+		"properties": map[string]any{
+			"category":  []string{"findable"},
+			"url":       []string{"/hello-world-1"},
+			"content":   []string{"Hello world 1"},
+			"published": []string{"2023-01-02T12:00:00Z"},
+		},
+	}
+
+	t.Run("delete an entry", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		uid, err := store.Insert(post)
+		assert.Nil(t, err)
+
+		_, ok := store.Find([]string{"url"}, no6.Predicates("type").Eq("h-entry"))
+		assert.True(t, ok)
+
+		err = store.DeleteByUID(uid)
+		assert.Nil(t, err)
+
+		_, ok = store.Find([]string{"url"}, no6.Predicates("type").Eq("h-entry"))
+		assert.False(t, ok)
+	})
+
+	t.Run("replace an entry", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		uid, err := store.Insert(post)
+		assert.Nil(t, err)
+
+		_, ok := store.Find([]string{"url"}, no6.Predicates("content").Eq("Hello world"))
+		assert.True(t, ok)
+
+		err = store.Replace(uid, post2)
+		assert.Nil(t, err)
+
+		_, ok = store.Find([]string{"url"}, no6.Predicates("content").Eq("Hello world"))
+		assert.False(t, ok)
+		_, ok = store.Find([]string{"url"}, no6.Predicates("content").Eq("Goodbye world"))
+		assert.True(t, ok)
+	})
+
+	t.Run("get by uid", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		uid, err := store.Insert(post)
+		assert.Nil(t, err)
+
+		entry, ok := store.Get(uid)
+		assert.True(t, ok)
+		assert.Equal(t, post, entry)
+	})
+
+	t.Run("get by url", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		_, err := store.Insert(post)
+		assert.Nil(t, err)
+
+		entry, ok := store.One(no6.Predicates("url").Eq("/hello-world"))
+		assert.True(t, ok)
+		assert.Equal(t, post, entry)
+	})
+
+	t.Run("list before", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		_, _ = store.Insert(post)
+		_, _ = store.Insert(post2)
+		_, _ = store.Insert(post3)
+
+		entries := store.All(no6.Predicates("published").Lt("2022-02-02"))
+
+		assert.Equal(t, []map[string]any{post, post2}, entries)
+	})
+
+	t.Run("list before with and without", func(t *testing.T) {
+		store, closer := newStore()
+		defer closer()
+
+		_, _ = store.Insert(post)
+		_, _ = store.Insert(post2)
+		_, _ = store.Insert(post3)
+		_, _ = store.Insert(post4)
+		_, _ = store.Insert(post5)
+
+		entries := store.All(
+			no6.Predicates("published").Gt("2023-01-02T00:00:00Z"),
+			no6.Predicates("published").Lt("2023-01-03T00:00:00Z"),
+			no6.Predicates("category").Eq("findable"),
+			no6.Without("deleted"),
+			no6.Sort("published").Asc(),
+		)
+
+		assert.Equal(t, []map[string]any{post4, post5}, entries)
+
+		entriesDesc := store.All(
+			no6.Predicates("published").Gt("2023-01-02T00:00:00Z"),
+			no6.Predicates("published").Lt("2023-01-03T00:00:00Z"),
+			no6.Predicates("category").Eq("findable"),
+			no6.Without("deleted"),
+			no6.Sort("published").Desc(),
+		)
+
+		assert.Equal(t, []map[string]any{post5, post4}, entriesDesc)
+	})
+}

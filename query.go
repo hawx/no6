@@ -70,17 +70,37 @@ func (q PredicatesMatcher) Gt(object any) PredicatesMatcher {
 	return PredicatesMatcher{predicates: q.predicates, constraint: Gt, object: object}
 }
 
-type SortMatcher struct {
-	predicate string
+type WithoutMatcher struct {
+	predicates []string
 }
 
-// Sort returns a matcher that causes results to be sorted by the predicate.
+func Without(predicates ...string) WithoutMatcher {
+	return WithoutMatcher{predicates: predicates}
+}
+
+func (q WithoutMatcher) isSubjectMatcher() {}
+
+type SortMatcher struct {
+	predicate string
+	desc      bool
+}
+
+// Sort returns a matcher that causes results to be sorted by the
+// predicate. Default sort order is ascending.
 func Sort(predicate string) SortMatcher {
 	return SortMatcher{predicate: predicate}
 }
 
 func (q SortMatcher) isMatcher()        {}
 func (q SortMatcher) isSubjectMatcher() {}
+
+func (q SortMatcher) Desc() SortMatcher {
+	return SortMatcher{predicate: q.predicate, desc: true}
+}
+
+func (q SortMatcher) Asc() SortMatcher {
+	return SortMatcher{predicate: q.predicate}
+}
 
 type LimitMatcher struct {
 	count uint
@@ -100,7 +120,9 @@ func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 
 	var (
 		predicates  []string
+		without     []string
 		sortOn      string
+		sortDesc    bool
 		limit       uint
 		constraints = map[string]constraintObject{}
 	)
@@ -116,8 +138,11 @@ func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 					}
 				}
 			}
+		case WithoutMatcher:
+			without = append(without, v.predicates...)
 		case SortMatcher:
 			sortOn = v.predicate
+			sortDesc = v.desc
 		case LimitMatcher:
 			limit = v.count
 		}
@@ -130,8 +155,8 @@ func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 		}
 
 		var subjects []uint64
-		var sortPredicate [][]byte
 
+		// start by querying on the predicates we want
 		for qi, predicate := range predicates {
 			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
 			if predicateBucket == nil {
@@ -170,14 +195,6 @@ func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 						}
 					}
 
-					if predicate == sortOn {
-						if item == nil {
-							sortPredicate = append(sortPredicate, dataBucket.Get(obj))
-						} else {
-							sortPredicate = append(sortPredicate, item)
-						}
-					}
-
 					thisQuerySubjects = append(thisQuerySubjects, keySubject(k))
 				}
 
@@ -191,10 +208,43 @@ func (s *Store) QuerySubjects(matchers ...SubjectMatcher) []string {
 			}
 		}
 
-		if sortOn != "" {
-			s.sortBy(subjects, sortPredicate)
+		// now remove anything we shouldn't have
+		for _, predicate := range without {
+			predicateBucket := tx.Bucket([]byte("predicate-" + predicate))
+			if predicateBucket == nil {
+				return nil
+			}
+
+			predicateBucket.ForEach(func(k, v []byte) error {
+				subjects = remove(subjects, keySubject(k))
+				return nil
+			})
 		}
 
+		// now sort
+		if sortOn != "" {
+			predicateBucket := tx.Bucket([]byte("predicate-" + sortOn))
+			if predicateBucket == nil {
+				return nil
+			}
+
+			var sortPredicate [][]byte
+			predicateBucket.ForEach(func(k, v []byte) error {
+				if !slices.Contains(subjects, keySubject(k)) {
+					return nil
+				}
+
+				for i := 0; i < len(v); i += 8 {
+					obj := v[i : i+8]
+					sortPredicate = append(sortPredicate, dataBucket.Get(obj))
+				}
+				return nil
+			})
+
+			s.sortBy(subjects, sortPredicate, sortDesc)
+		}
+
+		// finally trim to the limit
 		if limit != 0 {
 			subjects = subjects[:limit]
 		}
@@ -261,12 +311,23 @@ func (s *Store) Query(matchers ...Matcher) []Triple {
 		// step 3. figure out what objects to match each predicate to
 
 		var predicateBuckets []namedBucket
-		for _, p := range predicates {
-			b := tx.Bucket([]byte("predicate-" + p))
-			if b == nil {
-				continue
+		if len(predicates) > 0 {
+			for _, p := range predicates {
+				b := tx.Bucket([]byte("predicate-" + p))
+				if b == nil {
+					continue
+				}
+				predicateBuckets = append(predicateBuckets, namedBucket{predicate: p, bucket: b})
 			}
-			predicateBuckets = append(predicateBuckets, namedBucket{predicate: p, bucket: b})
+		} else {
+			tx.Bucket(bucketPredicates).ForEach(func(k []byte, _ []byte) error {
+				p := string(k)
+				if b := tx.Bucket([]byte("predicate-" + p)); b != nil {
+					predicateBuckets = append(predicateBuckets, namedBucket{predicate: p, bucket: b})
+				}
+
+				return nil
+			})
 		}
 
 		var postingLists []namedList
@@ -368,8 +429,24 @@ func intersect(a, b []uint64) []uint64 {
 	return result
 }
 
+func remove(a []uint64, b uint64) []uint64 {
+	if a == nil {
+		return nil
+	}
+
+	idx := sort.Search(len(a), func(i int) bool {
+		return a[i] >= b
+	})
+
+	if idx == len(a) || a[idx] != b {
+		return a
+	}
+
+	return slices.Delete(a, idx, idx+1)
+}
+
 // sortBy will sort as to follow the ordering of bs.
-func (s *Store) sortBy(as []uint64, bs [][]byte) {
+func (s *Store) sortBy(as []uint64, bs [][]byte, desc bool) {
 	type paired struct {
 		a uint64
 		b []byte
@@ -384,9 +461,15 @@ func (s *Store) sortBy(as []uint64, bs [][]byte) {
 		pairs[i] = paired{a: as[i], b: bs[i]}
 	}
 
-	slices.SortFunc(pairs, func(i, j paired) int {
-		return s.typer.Compare(i.b, j.b)
-	})
+	if desc {
+		slices.SortFunc(pairs, func(i, j paired) int {
+			return s.typer.Compare(j.b, i.b)
+		})
+	} else {
+		slices.SortFunc(pairs, func(i, j paired) int {
+			return s.typer.Compare(i.b, j.b)
+		})
+	}
 
 	for i := range as {
 		as[i] = pairs[i].a

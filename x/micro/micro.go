@@ -28,7 +28,7 @@ func Open(path string, newSubject func(string) string) (*Store, error) {
 //		"properties": { ... }
 //	}
 //
-// The subject  is returned, or an error if there was a problem.
+// The subject is returned, or an error if there was a problem.
 func (s *Store) Insert(data map[string]any) (string, error) {
 	typ, ok := data["type"].([]string)
 	if !ok || len(typ) != 1 {
@@ -37,9 +37,22 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 
 	uid := s.newSubject(typ[0])
 
+	if err := s.setForUID(uid, data); err != nil {
+		return "", err
+	}
+
+	return uid, nil
+}
+
+func (s *Store) setForUID(uid string, data map[string]any) error {
+	typ, ok := data["type"].([]string)
+	if !ok || len(typ) != 1 {
+		return errors.New("data must include a single string 'type' (I think)")
+	}
+
 	props, ok := data["properties"].(map[string]any)
 	if !ok {
-		return "", errors.New("data must include properties")
+		return errors.New("data must include properties")
 	}
 
 	var triples []no6.Triple
@@ -55,18 +68,17 @@ func (s *Store) Insert(data map[string]any) (string, error) {
 			for _, vvv := range vv {
 				vuid, err := s.Insert(vvv)
 				if err != nil {
-					return "", err
+					return err
 				}
 				triples = append(triples, no6.Triple{Subject: uid, Predicate: k, Object: vuid})
 			}
 		default:
-			return "", errors.New("invalid properties")
+			return errors.New("invalid properties")
 		}
 	}
 
 	s.inner.PutTriples(triples...)
-
-	return uid, nil
+	return nil
 }
 
 // Find retrieves a single microformat object using the query. It will resolve any
@@ -98,6 +110,42 @@ func (s *Store) FindAll(predicates []string, qs ...no6.SubjectMatcher) []map[str
 	return resolved
 }
 
+func (s *Store) DeleteByUID(uid string) error {
+	return s.inner.DeleteSubject(uid)
+}
+
+func (s *Store) Replace(uid string, data map[string]any) error {
+	if err := s.DeleteByUID(uid); err != nil {
+		return err
+	}
+
+	return s.setForUID(uid, data)
+}
+
+func (s *Store) Get(uid string) (map[string]any, bool) {
+	return s.tryResolveAll(uid)
+}
+
+func (s *Store) One(match ...no6.SubjectMatcher) (map[string]any, bool) {
+	subjects := s.inner.QuerySubjects(match...)
+	if len(subjects) != 1 {
+		return nil, false
+	}
+
+	return s.tryResolveAll(subjects[0])
+}
+
+func (s *Store) All(match ...no6.SubjectMatcher) []map[string]any {
+	subjects := s.inner.QuerySubjects(match...)
+	result := make([]map[string]any, len(subjects))
+
+	for i, subject := range subjects {
+		result[i], _ = s.tryResolveAll(subject)
+	}
+
+	return result
+}
+
 func (s *Store) tryResolve(id string, predicates []string) (map[string]any, bool) {
 	triples := s.inner.Query(no6.Subjects(id), no6.Predicates(predicates...))
 	if len(triples) == 0 {
@@ -124,6 +172,46 @@ func (s *Store) tryResolve(id string, predicates []string) (map[string]any, bool
 				}
 			} else {
 				if resolved, ok := s.tryResolve(triple.Object.(string), predicates); ok {
+					props[triple.Predicate] = []map[string]any{resolved}
+				} else {
+					props[triple.Predicate] = []string{triple.Object.(string)}
+				}
+			}
+		}
+	}
+
+	return map[string]any{
+		"type":       typ,
+		"properties": props,
+	}, true
+}
+
+func (s *Store) tryResolveAll(id string) (map[string]any, bool) {
+	triples := s.inner.Query(no6.Subjects(id))
+	if len(triples) == 0 {
+		return nil, false
+	}
+
+	var (
+		typ   []string
+		props = map[string]any{}
+	)
+
+	for _, triple := range triples {
+		if triple.Predicate == "type" {
+			typ = append(typ, triple.Object.(string))
+		} else {
+			if found, ok := props[triple.Predicate]; ok {
+				switch v := found.(type) {
+				case []string:
+					props[triple.Predicate] = append(v, triple.Object.(string))
+				case []map[string]any:
+					if resolved, ok := s.tryResolveAll(triple.Object.(string)); ok {
+						props[triple.Predicate] = append(v, resolved)
+					}
+				}
+			} else {
+				if resolved, ok := s.tryResolveAll(triple.Object.(string)); ok {
 					props[triple.Predicate] = []map[string]any{resolved}
 				} else {
 					props[triple.Predicate] = []string{triple.Object.(string)}
