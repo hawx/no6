@@ -13,7 +13,7 @@ import (
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: no6csv in PATH < FILE.csv\n       no6csv out PATH > FILE.csv")
+		printUsage()
 		os.Exit(2)
 		return
 	}
@@ -31,11 +31,15 @@ func main() {
 			os.Exit(1)
 			return
 		}
-	case "help":
-		fmt.Fprintln(os.Stderr, "usage: no6csv in|out PATH")
+	default:
+		printUsage()
 		os.Exit(2)
 		return
 	}
+}
+
+func printUsage() {
+	fmt.Fprintln(os.Stderr, "usage: no6csv in PATH < FILE.csv\n       no6csv out PATH > FILE.csv")
 }
 
 func runIn(path string) error {
